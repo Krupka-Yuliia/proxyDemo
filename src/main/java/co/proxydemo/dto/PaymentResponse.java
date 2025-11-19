@@ -1,4 +1,4 @@
-package co.proxydemo.dtos;
+package co.proxydemo.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -9,10 +9,12 @@ import java.time.LocalDateTime;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class WebhookEvent {
-    private String eventId;
-    private String eventType;
+public class PaymentResponse {
+    private boolean success;
     private String transactionId;
-    private Double amount;
+    private String message;
+    private String errorCode;
     private LocalDateTime timestamp;
+
+
 }

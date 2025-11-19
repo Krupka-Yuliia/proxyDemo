@@ -1,12 +1,12 @@
-package co.proxydemo.controllers;
+package co.proxydemo.controller;
 
-import co.proxydemo.dtos.PaymentRequest;
-import co.proxydemo.dtos.PaymentResponse;
-import co.proxydemo.dtos.WebhookEvent;
-import co.proxydemo.entities.Transaction;
-import co.proxydemo.repositories.TransactionRepository;
-import co.proxydemo.services.PaymentService;
-import co.proxydemo.services.WebhookService;
+import co.proxydemo.dto.PaymentRequest;
+import co.proxydemo.dto.PaymentResponse;
+import co.proxydemo.dto.WebhookEvent;
+import co.proxydemo.entity.Transaction;
+import co.proxydemo.repository.TransactionRepository;
+import co.proxydemo.service.PaymentService;
+import co.proxydemo.service.WebhookService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

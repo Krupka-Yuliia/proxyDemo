@@ -1,4 +1,4 @@
-package co.proxydemo.entities;
+package co.proxydemo.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -24,4 +24,8 @@ public class Transaction {
     private String errorMessage;
     private LocalDateTime createdAt;
     private String idempotencyKey;
+    private String productId;
+    private String productName;
+    private String description;
+    private Integer quantity;
 }

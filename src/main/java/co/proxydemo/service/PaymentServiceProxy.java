@@ -1,10 +1,12 @@
-package co.proxydemo.services;
+package co.proxydemo.service;
 
-import co.proxydemo.dtos.PaymentRequest;
-import co.proxydemo.dtos.PaymentResponse;
-import co.proxydemo.dtos.WebhookEvent;
-import co.proxydemo.entities.Transaction;
-import co.proxydemo.repositories.TransactionRepository;
+import co.proxydemo.dto.PaymentRequest;
+import co.proxydemo.dto.PaymentResponse;
+import co.proxydemo.dto.WebhookEvent;
+import co.proxydemo.entity.Product;
+import co.proxydemo.entity.Transaction;
+import co.proxydemo.repository.ProductRepository;
+import co.proxydemo.repository.TransactionRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
@@ -19,14 +21,17 @@ public class PaymentServiceProxy implements PaymentService {
 
     private final StripePaymentService realPaymentService;
     private final TransactionRepository transactionRepository;
+    private final ProductRepository productRepository;
     private final WebhookService webhookService;
 
     @Autowired
     public PaymentServiceProxy(StripePaymentService realPaymentService,
                                TransactionRepository transactionRepository,
+                               ProductRepository productRepository,
                                WebhookService webhookService) {
         this.realPaymentService = realPaymentService;
         this.transactionRepository = transactionRepository;
+        this.productRepository = productRepository;
         this.webhookService = webhookService;
     }
 
@@ -58,14 +63,38 @@ public class PaymentServiceProxy implements PaymentService {
             return new PaymentResponse(false, null, validation.getError(), "validation_error", LocalDateTime.now());
         }
 
+        if (request.getProductId() != null) {
+            Optional<Product> productOpt = productRepository.findByProductId(request.getProductId());
+            if (productOpt.isEmpty()) {
+                System.out.println("[PROXY] Product not found: " + request.getProductId());
+                saveFailedTransaction(request, "Product not found", idempotencyKey);
+                return new PaymentResponse(false, null, "Product not found", "product_not_found", LocalDateTime.now());
+            }
+
+            Product product = productOpt.get();
+            int requestedQty = request.getQuantity() != null ? request.getQuantity() : 1;
+
+            if (product.getStockQuantity() < requestedQty) {
+                System.out.println("[PROXY] Insufficient stock for product: " + product.getName());
+                saveFailedTransaction(request, "Insufficient stock", idempotencyKey);
+                return new PaymentResponse(false, null, "Insufficient stock available", "insufficient_stock", LocalDateTime.now());
+            }
+
+            System.out.println("[PROXY] Product validated: " + product.getName() + " (Stock: " + product.getStockQuantity() + ")");
+        }
+
         logRequest(request);
 
         System.out.println("[PROXY] Forwarding to Stripe service");
         PaymentResponse response = realPaymentService.processPayment(request);
 
+        if (response.isSuccess() && request.getProductId() != null) {
+            updateProductStock(request);
+        }
+
         saveTransaction(request, response, idempotencyKey);
 
-        sendWebhook(response, request.getAmount());
+        sendWebhook(response, request);
 
         logResponse(response);
 
@@ -89,7 +118,21 @@ public class PaymentServiceProxy implements PaymentService {
         if (request.getExpiryDate() == null || !request.getExpiryDate().matches("\\d{2}/\\d{2}")) {
             return new ValidationResult(false, "Invalid expiry date format (use MM/YY)");
         }
+        if (request.getQuantity() != null && request.getQuantity() <= 0) {
+            return new ValidationResult(false, "Quantity must be positive");
+        }
         return new ValidationResult(true, null);
+    }
+
+    private void updateProductStock(PaymentRequest request) {
+        Optional<Product> productOpt = productRepository.findByProductId(request.getProductId());
+        if (productOpt.isPresent()) {
+            Product product = productOpt.get();
+            int quantity = request.getQuantity() != null ? request.getQuantity() : 1;
+            product.setStockQuantity(product.getStockQuantity() - quantity);
+            productRepository.save(product);
+            System.out.println("[PROXY] Stock updated for " + product.getName() + ". Remaining: " + product.getStockQuantity());
+        }
     }
 
     private void saveTransaction(PaymentRequest request, PaymentResponse response, String idempotencyKey) {
@@ -102,6 +145,15 @@ public class PaymentServiceProxy implements PaymentService {
         transaction.setErrorMessage(response.isSuccess() ? null : response.getMessage());
         transaction.setCreatedAt(LocalDateTime.now());
         transaction.setIdempotencyKey(idempotencyKey);
+
+        transaction.setProductId(request.getProductId());
+        transaction.setDescription(request.getDescription());
+        transaction.setQuantity(request.getQuantity());
+
+        if (request.getProductId() != null) {
+            productRepository.findByProductId(request.getProductId())
+                    .ifPresent(product -> transaction.setProductName(product.getName()));
+        }
 
         transactionRepository.save(transaction);
         System.out.println("[PROXY] Transaction saved to database");
@@ -119,17 +171,22 @@ public class PaymentServiceProxy implements PaymentService {
         transaction.setErrorMessage(error);
         transaction.setCreatedAt(LocalDateTime.now());
         transaction.setIdempotencyKey(idempotencyKey);
+        transaction.setProductId(request.getProductId());
+        transaction.setDescription(request.getDescription());
+        transaction.setQuantity(request.getQuantity());
 
         transactionRepository.save(transaction);
     }
 
-    private void sendWebhook(PaymentResponse response, Double amount) {
+    private void sendWebhook(PaymentResponse response, PaymentRequest request) {
         if (response.isSuccess()) {
             WebhookEvent event = new WebhookEvent();
             event.setEventId("evt_" + System.currentTimeMillis());
             event.setEventType("payment.success");
             event.setTransactionId(response.getTransactionId());
-            event.setAmount(amount);
+            event.setAmount(request.getAmount());
+            event.setProductId(request.getProductId());
+            event.setDescription(request.getDescription());
             event.setTimestamp(LocalDateTime.now());
             webhookService.sendWebhook(event);
         } else {
@@ -137,7 +194,9 @@ public class PaymentServiceProxy implements PaymentService {
             event.setEventId("evt_" + System.currentTimeMillis());
             event.setEventType("payment.failed");
             event.setTransactionId(null);
-            event.setAmount(amount);
+            event.setAmount(request.getAmount());
+            event.setProductId(request.getProductId());
+            event.setDescription(request.getDescription());
             event.setTimestamp(LocalDateTime.now());
             webhookService.sendWebhook(event);
         }
@@ -145,7 +204,10 @@ public class PaymentServiceProxy implements PaymentService {
 
     private void logRequest(PaymentRequest request) {
         String maskedCard = maskCardNumber(request.getCardNumber());
-        System.out.println("[PROXY] Request logged - Amount: $" + request.getAmount() + ", Card: " + maskedCard);
+        String productInfo = request.getProductId() != null
+                ? ", Product: " + request.getProductId()
+                : "";
+        System.out.println("[PROXY] Request logged - Amount: $" + request.getAmount() + ", Card: " + maskedCard + productInfo);
     }
 
     private void logResponse(PaymentResponse response) {

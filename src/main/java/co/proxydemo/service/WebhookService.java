@@ -1,6 +1,6 @@
-package co.proxydemo.services;
+package co.proxydemo.service;
 
-import co.proxydemo.dtos.WebhookEvent;
+import co.proxydemo.dto.WebhookEvent;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -15,6 +15,9 @@ public class WebhookService {
         System.out.println("[WEBHOOK] Sending webhook: " + event.getEventType());
         System.out.println("Event ID: " + event.getEventId());
         System.out.println("Transaction: " + event.getTransactionId());
+        if (event.getProductId() != null) {
+            System.out.println("Product: " + event.getProductId() + " - " + event.getDescription());
+        }
         eventQueue.add(event);
     }
 

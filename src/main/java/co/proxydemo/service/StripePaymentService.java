@@ -1,7 +1,7 @@
-package co.proxydemo.services;
+package co.proxydemo.service;
 
-import co.proxydemo.dtos.PaymentRequest;
-import co.proxydemo.dtos.PaymentResponse;
+import co.proxydemo.dto.PaymentRequest;
+import co.proxydemo.dto.PaymentResponse;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;

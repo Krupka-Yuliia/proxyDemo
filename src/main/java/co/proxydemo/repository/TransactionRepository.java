@@ -1,6 +1,6 @@
-package co.proxydemo.repositories;
+package co.proxydemo.repository;
 
-import co.proxydemo.entities.Transaction;
+import co.proxydemo.entity.Transaction;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

@@ -1,4 +1,4 @@
-package co.proxydemo.dtos;
+package co.proxydemo.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -13,4 +13,7 @@ public class PaymentRequest {
     private String cvv;
     private String expiryDate;
     private String idempotencyKey;
+    private String productId;
+    private String description;
+    private Integer quantity;
 }
