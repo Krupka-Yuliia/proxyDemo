@@ -2,6 +2,7 @@ package co.proxydemo.service;
 
 import co.proxydemo.dto.PaymentRequest;
 import co.proxydemo.dto.PaymentResponse;
+import co.proxydemo.dto.ValidationResult;
 import co.proxydemo.dto.WebhookEvent;
 import co.proxydemo.entity.Product;
 import co.proxydemo.entity.Transaction;
@@ -48,7 +49,7 @@ public class PaymentServiceProxy implements PaymentService {
                 Transaction tx = existing.get();
                 return new PaymentResponse(
                         "SUCCESS".equals(tx.getStatus()),
-                        tx.getTransactionId(),
+                        tx.getId().toString(),
                         "SUCCESS".equals(tx.getStatus()) ? "Payment already processed" : tx.getErrorMessage(),
                         tx.getErrorMessage() != null ? "cached_error" : null,
                         LocalDateTime.now()
@@ -64,7 +65,8 @@ public class PaymentServiceProxy implements PaymentService {
         }
 
         if (request.getProductId() != null) {
-            Optional<Product> productOpt = productRepository.findByProductId(request.getProductId());
+            Long productId = Long.parseLong(request.getProductId());
+            Optional<Product> productOpt = productRepository.findById(productId);
             if (productOpt.isEmpty()) {
                 System.out.println("[PROXY] Product not found: " + request.getProductId());
                 saveFailedTransaction(request, "Product not found", idempotencyKey);
@@ -125,7 +127,8 @@ public class PaymentServiceProxy implements PaymentService {
     }
 
     private void updateProductStock(PaymentRequest request) {
-        Optional<Product> productOpt = productRepository.findByProductId(request.getProductId());
+        Long productId = Long.parseLong(request.getProductId());
+        Optional<Product> productOpt = productRepository.findById(productId);
         if (productOpt.isPresent()) {
             Product product = productOpt.get();
             int quantity = request.getQuantity() != null ? request.getQuantity() : 1;
@@ -138,7 +141,6 @@ public class PaymentServiceProxy implements PaymentService {
     private void saveTransaction(PaymentRequest request, PaymentResponse response, String idempotencyKey) {
         String cardLast4 = request.getCardNumber().substring(request.getCardNumber().length() - 4);
         Transaction transaction = new Transaction();
-        transaction.setTransactionId(response.getTransactionId());
         transaction.setAmount(request.getAmount());
         transaction.setCardLast4(cardLast4);
         transaction.setStatus(response.isSuccess() ? "SUCCESS" : "FAILED");
@@ -151,7 +153,8 @@ public class PaymentServiceProxy implements PaymentService {
         transaction.setQuantity(request.getQuantity());
 
         if (request.getProductId() != null) {
-            productRepository.findByProductId(request.getProductId())
+            Long productId = Long.parseLong(request.getProductId());
+            productRepository.findById(productId)
                     .ifPresent(product -> transaction.setProductName(product.getName()));
         }
 
@@ -164,7 +167,6 @@ public class PaymentServiceProxy implements PaymentService {
                 ? request.getCardNumber().substring(request.getCardNumber().length() - 4)
                 : "0000";
         Transaction transaction = new Transaction();
-        transaction.setTransactionId(null);
         transaction.setAmount(request.getAmount());
         transaction.setCardLast4(cardLast4);
         transaction.setStatus("FAILED");
@@ -217,23 +219,5 @@ public class PaymentServiceProxy implements PaymentService {
     private String maskCardNumber(String cardNumber) {
         if (cardNumber.length() < 4) return "****";
         return "****-****-****-" + cardNumber.substring(cardNumber.length() - 4);
-    }
-
-    private static class ValidationResult {
-        private final boolean valid;
-        private final String error;
-
-        ValidationResult(boolean valid, String error) {
-            this.valid = valid;
-            this.error = error;
-        }
-
-        boolean isValid() {
-            return valid;
-        }
-
-        String getError() {
-            return error;
-        }
     }
 }

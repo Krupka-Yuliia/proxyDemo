@@ -36,7 +36,7 @@ public class ProxyDemoApplication implements CommandLineRunner {
         req1.setCvv("123");
         req1.setExpiryDate("12/28");
         req1.setIdempotencyKey("key-001");
-        req1.setProductId("PROD-001");
+        req1.setProductId("1");
         req1.setDescription("Wireless Headphones");
         req1.setQuantity(1);
         paymentService.processPayment(req1);
@@ -49,7 +49,7 @@ public class ProxyDemoApplication implements CommandLineRunner {
         req2.setCvv("456");
         req2.setExpiryDate("03/27");
         req2.setIdempotencyKey("key-002");
-        req2.setProductId("PROD-002");
+        req2.setProductId("2");
         req2.setDescription("Smart Watch");
         req2.setQuantity(1);
         paymentService.processPayment(req2);
@@ -62,7 +62,7 @@ public class ProxyDemoApplication implements CommandLineRunner {
         req3.setCvv("123");
         req3.setExpiryDate("12/28");
         req3.setIdempotencyKey("key-001");
-        req3.setProductId("PROD-001");
+        req3.setProductId("1");
         req3.setDescription("Wireless Headphones");
         req3.setQuantity(1);
         paymentService.processPayment(req3);
@@ -75,7 +75,7 @@ public class ProxyDemoApplication implements CommandLineRunner {
         req4.setCvv("789");
         req4.setExpiryDate("06/29");
         req4.setIdempotencyKey("key-004");
-        req4.setProductId("PROD-003");
+        req4.setProductId("3");
         req4.setDescription("Gaming Laptop");
         req4.setQuantity(10);
         paymentService.processPayment(req4);
@@ -88,7 +88,7 @@ public class ProxyDemoApplication implements CommandLineRunner {
         req5.setCvv("321");
         req5.setExpiryDate("09/27");
         req5.setIdempotencyKey("key-005");
-        req5.setProductId("PROD-999");
+        req5.setProductId("999");
         req5.setDescription("Non-existent Product");
         req5.setQuantity(1);
         paymentService.processPayment(req5);
@@ -98,7 +98,6 @@ public class ProxyDemoApplication implements CommandLineRunner {
         System.out.println("Initializing sample products...");
 
         Product p1 = new Product();
-        p1.setProductId("PROD-001");
         p1.setName("Wireless Headphones");
         p1.setDescription("High-quality noise-cancelling headphones");
         p1.setPrice(150.00);
@@ -107,7 +106,6 @@ public class ProxyDemoApplication implements CommandLineRunner {
         productRepository.save(p1);
 
         Product p2 = new Product();
-        p2.setProductId("PROD-002");
         p2.setName("Smart Watch");
         p2.setDescription("Fitness tracking smartwatch with GPS");
         p2.setPrice(299.99);
@@ -116,7 +114,6 @@ public class ProxyDemoApplication implements CommandLineRunner {
         productRepository.save(p2);
 
         Product p3 = new Product();
-        p3.setProductId("PROD-003");
         p3.setName("Gaming Laptop");
         p3.setDescription("High-performance gaming laptop");
         p3.setPrice(1499.99);
@@ -125,7 +122,6 @@ public class ProxyDemoApplication implements CommandLineRunner {
         productRepository.save(p3);
 
         Product p4 = new Product();
-        p4.setProductId("PROD-004");
         p4.setName("Mechanical Keyboard");
         p4.setDescription("RGB mechanical keyboard");
         p4.setPrice(129.99);

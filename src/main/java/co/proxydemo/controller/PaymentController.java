@@ -43,8 +43,8 @@ public class PaymentController {
     }
 
     @GetMapping("/transactions")
-    public ResponseEntity<List<Transaction>> getAllTransactions() {
-        return ResponseEntity.ok(transactionRepository.findAll());
+    public List<Transaction> getAllTransactions() {
+        return transactionRepository.findAll();
     }
 
     @GetMapping("/webhooks")
