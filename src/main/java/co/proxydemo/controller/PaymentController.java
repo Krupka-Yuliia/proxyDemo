@@ -2,7 +2,6 @@ package co.proxydemo.controller;
 
 import co.proxydemo.dto.PaymentRequest;
 import co.proxydemo.dto.PaymentResponse;
-import co.proxydemo.dto.WebhookEvent;
 import co.proxydemo.entity.Transaction;
 import co.proxydemo.repository.TransactionRepository;
 import co.proxydemo.service.PaymentService;
@@ -45,11 +44,5 @@ public class PaymentController {
     @GetMapping("/transactions")
     public List<Transaction> getAllTransactions() {
         return transactionRepository.findAll();
-    }
-
-//    todo: remove
-    @GetMapping("/webhooks")
-    public ResponseEntity<List<WebhookEvent>> getWebhooks() {
-        return ResponseEntity.ok(webhookService.getEvents());
     }
 }

@@ -61,7 +61,6 @@ public class PaymentServiceProxy implements PaymentService {
             }
         }
 
-        // Validate client credentials
         ValidationResult clientValidation = validateClient(request);
         if (!clientValidation.isValid()) {
             System.out.println("[PROXY] Client validation failed: " + clientValidation.getError());
@@ -100,7 +99,7 @@ public class PaymentServiceProxy implements PaymentService {
         }
 
         Optional<Client> clientOpt = clientRepository.findByClientIdAndClientSecret(
-                request.getClientId(), 
+                request.getClientId(),
                 request.getClientSecret()
         );
 
@@ -139,10 +138,10 @@ public class PaymentServiceProxy implements PaymentService {
     }
 
     private void saveTransaction(PaymentRequest request, PaymentResponse response, String idempotencyKey) {
-        // Get client for transaction
+
         Client client = clientRepository.findByClientId(request.getClientId())
                 .orElseThrow(() -> new RuntimeException("Client not found")); // Should not happen after validation
-        
+
         String cardLast4 = request.getCardNumber().substring(request.getCardNumber().length() - 4);
         Transaction transaction = new Transaction();
         transaction.setClient(client);
@@ -153,7 +152,6 @@ public class PaymentServiceProxy implements PaymentService {
         transaction.setCreatedAt(LocalDateTime.now());
         transaction.setIdempotencyKey(idempotencyKey);
 
-        // Store additional data in metadata
         Map<String, String> metadata = new HashMap<>();
         if (request.getProductId() != null) {
             metadata.put("productId", request.getProductId());
@@ -171,14 +169,12 @@ public class PaymentServiceProxy implements PaymentService {
     }
 
     private void saveFailedTransaction(PaymentRequest request, String error, String idempotencyKey) {
-        // Only save failed transaction if client is valid (to avoid saving transactions with invalid clients)
+
         if (request.getClientId() != null) {
             Optional<Client> clientOpt = clientRepository.findByClientId(request.getClientId());
             if (clientOpt.isEmpty()) {
-                // Don't save transaction if client doesn't exist
                 return;
             }
-            
             String cardLast4 = request.getCardNumber() != null && request.getCardNumber().length() >= 4
                     ? request.getCardNumber().substring(request.getCardNumber().length() - 4)
                     : "0000";
@@ -190,8 +186,7 @@ public class PaymentServiceProxy implements PaymentService {
             transaction.setErrorMessage(error);
             transaction.setCreatedAt(LocalDateTime.now());
             transaction.setIdempotencyKey(idempotencyKey);
-            
-            // Store additional data in metadata
+
             Map<String, String> metadata = new HashMap<>();
             if (request.getProductId() != null) {
                 metadata.put("productId", request.getProductId());
