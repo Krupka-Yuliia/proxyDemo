@@ -47,6 +47,7 @@ public class PaymentController {
         return transactionRepository.findAll();
     }
 
+//    todo: remove
     @GetMapping("/webhooks")
     public ResponseEntity<List<WebhookEvent>> getWebhooks() {
         return ResponseEntity.ok(webhookService.getEvents());

@@ -4,9 +4,9 @@ import co.proxydemo.dto.PaymentRequest;
 import co.proxydemo.dto.PaymentResponse;
 import co.proxydemo.dto.ValidationResult;
 import co.proxydemo.dto.WebhookEvent;
-import co.proxydemo.entity.Product;
+import co.proxydemo.entity.Client;
 import co.proxydemo.entity.Transaction;
-import co.proxydemo.repository.ProductRepository;
+import co.proxydemo.repository.ClientRepository;
 import co.proxydemo.repository.TransactionRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +14,8 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -22,17 +24,19 @@ public class PaymentServiceProxy implements PaymentService {
 
     private final StripePaymentService realPaymentService;
     private final TransactionRepository transactionRepository;
-    private final ProductRepository productRepository;
+    private final ClientRepository clientRepository;
     private final WebhookService webhookService;
 
     @Autowired
-    public PaymentServiceProxy(StripePaymentService realPaymentService,
-                               TransactionRepository transactionRepository,
-                               ProductRepository productRepository,
-                               WebhookService webhookService) {
+    public PaymentServiceProxy(
+            StripePaymentService realPaymentService,
+            TransactionRepository transactionRepository,
+            ClientRepository clientRepository,
+            WebhookService webhookService
+    ) {
         this.realPaymentService = realPaymentService;
         this.transactionRepository = transactionRepository;
-        this.productRepository = productRepository;
+        this.clientRepository = clientRepository;
         this.webhookService = webhookService;
     }
 
@@ -57,6 +61,13 @@ public class PaymentServiceProxy implements PaymentService {
             }
         }
 
+        // Validate client credentials
+        ValidationResult clientValidation = validateClient(request);
+        if (!clientValidation.isValid()) {
+            System.out.println("[PROXY] Client validation failed: " + clientValidation.getError());
+            return new PaymentResponse(false, null, clientValidation.getError(), "client_validation_error", LocalDateTime.now());
+        }
+
         ValidationResult validation = validateRequest(request);
         if (!validation.isValid()) {
             System.out.println("[PROXY] Validation failed: " + validation.getError());
@@ -64,35 +75,11 @@ public class PaymentServiceProxy implements PaymentService {
             return new PaymentResponse(false, null, validation.getError(), "validation_error", LocalDateTime.now());
         }
 
-        if (request.getProductId() != null) {
-            Long productId = Long.parseLong(request.getProductId());
-            Optional<Product> productOpt = productRepository.findById(productId);
-            if (productOpt.isEmpty()) {
-                System.out.println("[PROXY] Product not found: " + request.getProductId());
-                saveFailedTransaction(request, "Product not found", idempotencyKey);
-                return new PaymentResponse(false, null, "Product not found", "product_not_found", LocalDateTime.now());
-            }
-
-            Product product = productOpt.get();
-            int requestedQty = request.getQuantity() != null ? request.getQuantity() : 1;
-
-            if (product.getStockQuantity() < requestedQty) {
-                System.out.println("[PROXY] Insufficient stock for product: " + product.getName());
-                saveFailedTransaction(request, "Insufficient stock", idempotencyKey);
-                return new PaymentResponse(false, null, "Insufficient stock available", "insufficient_stock", LocalDateTime.now());
-            }
-
-            System.out.println("[PROXY] Product validated: " + product.getName() + " (Stock: " + product.getStockQuantity() + ")");
-        }
 
         logRequest(request);
 
         System.out.println("[PROXY] Forwarding to Stripe service");
         PaymentResponse response = realPaymentService.processPayment(request);
-
-        if (response.isSuccess() && request.getProductId() != null) {
-            updateProductStock(request);
-        }
 
         saveTransaction(request, response, idempotencyKey);
 
@@ -102,6 +89,31 @@ public class PaymentServiceProxy implements PaymentService {
 
         System.out.println("[PROXY] Request completed\n");
         return response;
+    }
+
+    private ValidationResult validateClient(PaymentRequest request) {
+        if (request.getClientId() == null || request.getClientId().trim().isEmpty()) {
+            return new ValidationResult(false, "Client ID is required");
+        }
+        if (request.getClientSecret() == null || request.getClientSecret().trim().isEmpty()) {
+            return new ValidationResult(false, "Client secret is required");
+        }
+
+        Optional<Client> clientOpt = clientRepository.findByClientIdAndClientSecret(
+                request.getClientId(), 
+                request.getClientSecret()
+        );
+
+        if (clientOpt.isEmpty()) {
+            return new ValidationResult(false, "Invalid client credentials");
+        }
+
+        Client client = clientOpt.get();
+        if (!client.getActive()) {
+            return new ValidationResult(false, "Client is inactive");
+        }
+
+        return new ValidationResult(true, null);
     }
 
     private ValidationResult validateRequest(PaymentRequest request) {
@@ -126,21 +138,14 @@ public class PaymentServiceProxy implements PaymentService {
         return new ValidationResult(true, null);
     }
 
-    private void updateProductStock(PaymentRequest request) {
-        Long productId = Long.parseLong(request.getProductId());
-        Optional<Product> productOpt = productRepository.findById(productId);
-        if (productOpt.isPresent()) {
-            Product product = productOpt.get();
-            int quantity = request.getQuantity() != null ? request.getQuantity() : 1;
-            product.setStockQuantity(product.getStockQuantity() - quantity);
-            productRepository.save(product);
-            System.out.println("[PROXY] Stock updated for " + product.getName() + ". Remaining: " + product.getStockQuantity());
-        }
-    }
-
     private void saveTransaction(PaymentRequest request, PaymentResponse response, String idempotencyKey) {
+        // Get client for transaction
+        Client client = clientRepository.findByClientId(request.getClientId())
+                .orElseThrow(() -> new RuntimeException("Client not found")); // Should not happen after validation
+        
         String cardLast4 = request.getCardNumber().substring(request.getCardNumber().length() - 4);
         Transaction transaction = new Transaction();
+        transaction.setClient(client);
         transaction.setAmount(request.getAmount());
         transaction.setCardLast4(cardLast4);
         transaction.setStatus(response.isSuccess() ? "SUCCESS" : "FAILED");
@@ -148,36 +153,59 @@ public class PaymentServiceProxy implements PaymentService {
         transaction.setCreatedAt(LocalDateTime.now());
         transaction.setIdempotencyKey(idempotencyKey);
 
-        transaction.setProductId(request.getProductId());
-        transaction.setDescription(request.getDescription());
-        transaction.setQuantity(request.getQuantity());
-
+        // Store additional data in metadata
+        Map<String, String> metadata = new HashMap<>();
         if (request.getProductId() != null) {
-            Long productId = Long.parseLong(request.getProductId());
-            productRepository.findById(productId)
-                    .ifPresent(product -> transaction.setProductName(product.getName()));
+            metadata.put("productId", request.getProductId());
         }
+        if (request.getDescription() != null) {
+            metadata.put("description", request.getDescription());
+        }
+        if (request.getQuantity() != null) {
+            metadata.put("quantity", request.getQuantity().toString());
+        }
+        transaction.setMetadata(metadata);
 
         transactionRepository.save(transaction);
         System.out.println("[PROXY] Transaction saved to database");
     }
 
     private void saveFailedTransaction(PaymentRequest request, String error, String idempotencyKey) {
-        String cardLast4 = request.getCardNumber() != null && request.getCardNumber().length() >= 4
-                ? request.getCardNumber().substring(request.getCardNumber().length() - 4)
-                : "0000";
-        Transaction transaction = new Transaction();
-        transaction.setAmount(request.getAmount());
-        transaction.setCardLast4(cardLast4);
-        transaction.setStatus("FAILED");
-        transaction.setErrorMessage(error);
-        transaction.setCreatedAt(LocalDateTime.now());
-        transaction.setIdempotencyKey(idempotencyKey);
-        transaction.setProductId(request.getProductId());
-        transaction.setDescription(request.getDescription());
-        transaction.setQuantity(request.getQuantity());
+        // Only save failed transaction if client is valid (to avoid saving transactions with invalid clients)
+        if (request.getClientId() != null) {
+            Optional<Client> clientOpt = clientRepository.findByClientId(request.getClientId());
+            if (clientOpt.isEmpty()) {
+                // Don't save transaction if client doesn't exist
+                return;
+            }
+            
+            String cardLast4 = request.getCardNumber() != null && request.getCardNumber().length() >= 4
+                    ? request.getCardNumber().substring(request.getCardNumber().length() - 4)
+                    : "0000";
+            Transaction transaction = new Transaction();
+            transaction.setClient(clientOpt.get());
+            transaction.setAmount(request.getAmount());
+            transaction.setCardLast4(cardLast4);
+            transaction.setStatus("FAILED");
+            transaction.setErrorMessage(error);
+            transaction.setCreatedAt(LocalDateTime.now());
+            transaction.setIdempotencyKey(idempotencyKey);
+            
+            // Store additional data in metadata
+            Map<String, String> metadata = new HashMap<>();
+            if (request.getProductId() != null) {
+                metadata.put("productId", request.getProductId());
+            }
+            if (request.getDescription() != null) {
+                metadata.put("description", request.getDescription());
+            }
+            if (request.getQuantity() != null) {
+                metadata.put("quantity", request.getQuantity().toString());
+            }
+            transaction.setMetadata(metadata);
 
-        transactionRepository.save(transaction);
+            transactionRepository.save(transaction);
+        }
     }
 
     private void sendWebhook(PaymentResponse response, PaymentRequest request) {
@@ -206,10 +234,7 @@ public class PaymentServiceProxy implements PaymentService {
 
     private void logRequest(PaymentRequest request) {
         String maskedCard = maskCardNumber(request.getCardNumber());
-        String productInfo = request.getProductId() != null
-                ? ", Product: " + request.getProductId()
-                : "";
-        System.out.println("[PROXY] Request logged - Amount: $" + request.getAmount() + ", Card: " + maskedCard + productInfo);
+        System.out.println("[PROXY] Request logged - Amount: $" + request.getAmount() + ", Card: " + maskedCard);
     }
 
     private void logResponse(PaymentResponse response) {

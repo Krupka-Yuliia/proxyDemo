@@ -1,8 +1,6 @@
 package co.proxydemo;
 
 import co.proxydemo.dto.PaymentRequest;
-import co.proxydemo.entity.Product;
-import co.proxydemo.repository.ProductRepository;
 import co.proxydemo.service.PaymentService;
 import lombok.AllArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
@@ -14,7 +12,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class ProxyDemoApplication implements CommandLineRunner {
 
     private PaymentService paymentService;
-    private ProductRepository productRepository;
 
     public static void main(String[] args) {
         SpringApplication.run(ProxyDemoApplication.class, args);
@@ -22,8 +19,6 @@ public class ProxyDemoApplication implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        initializeProducts();
-
         System.out.println("\n╔═══════════════════════════════════════════════╗");
         System.out.println("║  PAYMENT PROXY PATTERN DEMONSTRATION          ║");
         System.out.println("╚═══════════════════════════════════════════════╝\n");
@@ -92,43 +87,5 @@ public class ProxyDemoApplication implements CommandLineRunner {
         req5.setDescription("Non-existent Product");
         req5.setQuantity(1);
         paymentService.processPayment(req5);
-    }
-
-    private void initializeProducts() {
-        System.out.println("Initializing sample products...");
-
-        Product p1 = new Product();
-        p1.setName("Wireless Headphones");
-        p1.setDescription("High-quality noise-cancelling headphones");
-        p1.setPrice(150.00);
-        p1.setStockQuantity(50);
-        p1.setCategory("Electronics");
-        productRepository.save(p1);
-
-        Product p2 = new Product();
-        p2.setName("Smart Watch");
-        p2.setDescription("Fitness tracking smartwatch with GPS");
-        p2.setPrice(299.99);
-        p2.setStockQuantity(30);
-        p2.setCategory("Wearables");
-        productRepository.save(p2);
-
-        Product p3 = new Product();
-        p3.setName("Gaming Laptop");
-        p3.setDescription("High-performance gaming laptop");
-        p3.setPrice(1499.99);
-        p3.setStockQuantity(5);
-        p3.setCategory("Computers");
-        productRepository.save(p3);
-
-        Product p4 = new Product();
-        p4.setName("Mechanical Keyboard");
-        p4.setDescription("RGB mechanical keyboard");
-        p4.setPrice(129.99);
-        p4.setStockQuantity(100);
-        p4.setCategory("Accessories");
-        productRepository.save(p4);
-
-        System.out.println("Sample products initialized!\n");
     }
 }
