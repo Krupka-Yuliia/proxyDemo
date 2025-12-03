@@ -5,7 +5,6 @@ import co.proxydemo.dto.PaymentResponse;
 import co.proxydemo.entity.Transaction;
 import co.proxydemo.repository.TransactionRepository;
 import co.proxydemo.service.PaymentService;
-import co.proxydemo.service.WebhookService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,20 +18,21 @@ public class PaymentController {
 
     private final PaymentService paymentService;
     private final TransactionRepository transactionRepository;
-    private final WebhookService webhookService;
 
     @Autowired
     public PaymentController(PaymentService paymentService,
-                             TransactionRepository transactionRepository,
-                             WebhookService webhookService) {
+                             TransactionRepository transactionRepository) {
         this.paymentService = paymentService;
         this.transactionRepository = transactionRepository;
-        this.webhookService = webhookService;
     }
 
     @PostMapping
-    public ResponseEntity<PaymentResponse> createPayment(@RequestBody PaymentRequest request) {
-        PaymentResponse response = paymentService.processPayment(request);
+    public ResponseEntity<PaymentResponse> createPayment(
+            @RequestBody PaymentRequest request,
+            @RequestHeader("X-Client-Id") String clientId,
+            @RequestHeader("X-Client-Secret") String clientSecret
+    ) {
+        PaymentResponse response = paymentService.processPayment(request, clientId, clientSecret);
 
         if (response.isSuccess()) {
             return ResponseEntity.ok(response);

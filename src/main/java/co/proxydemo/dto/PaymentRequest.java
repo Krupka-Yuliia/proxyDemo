@@ -1,5 +1,7 @@
 package co.proxydemo.dto;
 
+import java.util.Map;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -8,14 +10,11 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class PaymentRequest {
-    private String clientId;
-    private String clientSecret;
     private double amount;
     private String cardNumber;
     private String cvv;
     private String expiryDate;
     private String idempotencyKey;
-    private String productId;
-    private String description;
-    private Integer quantity;
+    private Map<String, String> metadata;
+    private String provider;
 }

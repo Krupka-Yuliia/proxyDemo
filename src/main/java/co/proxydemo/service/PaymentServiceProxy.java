@@ -9,6 +9,8 @@ import co.proxydemo.entity.Transaction;
 import co.proxydemo.repository.ClientRepository;
 import co.proxydemo.repository.TransactionRepository;
 import jakarta.transaction.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
@@ -22,19 +24,33 @@ import java.util.Optional;
 @Primary
 public class PaymentServiceProxy implements PaymentService {
 
-    private final StripePaymentService realPaymentService;
+    private static final Logger logger = LoggerFactory.getLogger(PaymentServiceProxy.class);
+
+    private static final String ERROR_CLIENT_VALIDATION = "client_validation_error";
+    private static final String ERROR_VALIDATION = "validation_error";
+    private static final String ERROR_CACHED = "cached_error";
+
+    private static final String STATUS_SUCCESS = "SUCCESS";
+    private static final String STATUS_FAILED = "FAILED";
+
+    private static final String VISA_CARD_PREFIX = "4111";
+
+    private final StripePaymentService stripePaymentService;
+    private final VisaPaymentService visaPaymentService;
     private final TransactionRepository transactionRepository;
     private final ClientRepository clientRepository;
     private final WebhookService webhookService;
 
     @Autowired
     public PaymentServiceProxy(
-            StripePaymentService realPaymentService,
+            StripePaymentService stripePaymentService,
+            VisaPaymentService visaPaymentService,
             TransactionRepository transactionRepository,
             ClientRepository clientRepository,
             WebhookService webhookService
     ) {
-        this.realPaymentService = realPaymentService;
+        this.stripePaymentService = stripePaymentService;
+        this.visaPaymentService = visaPaymentService;
         this.transactionRepository = transactionRepository;
         this.clientRepository = clientRepository;
         this.webhookService = webhookService;
@@ -43,65 +59,63 @@ public class PaymentServiceProxy implements PaymentService {
     @Override
     @Transactional
     public PaymentResponse processPayment(PaymentRequest request) {
-        System.out.println("\n[PROXY] Payment request received");
+        logger.warn("Client credentials must be supplied via headers (X-Client-Id, X-Client-Secret)");
+        return new PaymentResponse(false, null, "Client credentials are required in headers", ERROR_CLIENT_VALIDATION, LocalDateTime.now());
+    }
+
+    @Override
+    @Transactional
+    public PaymentResponse processPayment(PaymentRequest request, String clientId, String clientSecret) {
+        logger.info("Payment request received for amount: {}", request.getAmount());
 
         String idempotencyKey = request.getIdempotencyKey();
-        if (idempotencyKey != null) {
-            Optional<Transaction> existing = transactionRepository.findByIdempotencyKey(idempotencyKey);
-            if (existing.isPresent()) {
-                System.out.println("[PROXY] Idempotent request detected - returning cached response");
-                Transaction tx = existing.get();
-                return new PaymentResponse(
-                        "SUCCESS".equals(tx.getStatus()),
-                        tx.getId().toString(),
-                        "SUCCESS".equals(tx.getStatus()) ? "Payment already processed" : tx.getErrorMessage(),
-                        tx.getErrorMessage() != null ? "cached_error" : null,
-                        LocalDateTime.now()
-                );
-            }
+        Optional<Transaction> existing = transactionRepository.findByIdempotencyKey(idempotencyKey);
+        if (existing.isPresent()) {
+            logger.info("Idempotent request detected with key: {}", idempotencyKey);
+            Transaction tx = existing.get();
+            return buildResponseFromTransaction(tx);
         }
 
-        ValidationResult clientValidation = validateClient(request);
+        ValidationResult clientValidation = validateClient(clientId, clientSecret);
         if (!clientValidation.isValid()) {
-            System.out.println("[PROXY] Client validation failed: " + clientValidation.getError());
-            return new PaymentResponse(false, null, clientValidation.getError(), "client_validation_error", LocalDateTime.now());
+            logger.warn("Client validation failed: {}", clientValidation.getError());
+            return new PaymentResponse(false, null, clientValidation.getError(), ERROR_CLIENT_VALIDATION, LocalDateTime.now());
         }
 
         ValidationResult validation = validateRequest(request);
         if (!validation.isValid()) {
-            System.out.println("[PROXY] Validation failed: " + validation.getError());
-            saveFailedTransaction(request, validation.getError(), idempotencyKey);
-            return new PaymentResponse(false, null, validation.getError(), "validation_error", LocalDateTime.now());
+            logger.warn("Request validation failed: {}", validation.getError());
+            saveFailedTransaction(request, validation.getError(), idempotencyKey, clientId);
+            return new PaymentResponse(false, null, validation.getError(), ERROR_VALIDATION, LocalDateTime.now());
         }
-
 
         logRequest(request);
 
-        System.out.println("[PROXY] Forwarding to Stripe service");
-        PaymentResponse response = realPaymentService.processPayment(request);
+        PaymentService selectedService = selectPaymentService(request);
+        String providerName = getProviderName(selectedService);
+        logger.debug("Forwarding payment to {} service", providerName);
 
-        saveTransaction(request, response, idempotencyKey);
+        PaymentResponse response = selectedService.processPayment(request);
+
+        saveTransaction(request, response, idempotencyKey, clientId);
 
         sendWebhook(response, request);
 
         logResponse(response);
 
-        System.out.println("[PROXY] Request completed\n");
+        logger.info("Payment request completed - Success: {}", response.isSuccess());
         return response;
     }
 
-    private ValidationResult validateClient(PaymentRequest request) {
-        if (request.getClientId() == null || request.getClientId().trim().isEmpty()) {
+    private ValidationResult validateClient(String clientId, String clientSecret) {
+        if (clientId == null || clientId.trim().isEmpty()) {
             return new ValidationResult(false, "Client ID is required");
         }
-        if (request.getClientSecret() == null || request.getClientSecret().trim().isEmpty()) {
+        if (clientSecret == null || clientSecret.trim().isEmpty()) {
             return new ValidationResult(false, "Client secret is required");
         }
 
-        Optional<Client> clientOpt = clientRepository.findByClientIdAndClientSecret(
-                request.getClientId(),
-                request.getClientSecret()
-        );
+        Optional<Client> clientOpt = clientRepository.findByClientIdAndClientSecret(clientId, clientSecret);
 
         if (clientOpt.isEmpty()) {
             return new ValidationResult(false, "Invalid client credentials");
@@ -131,113 +145,149 @@ public class PaymentServiceProxy implements PaymentService {
         if (request.getExpiryDate() == null || !request.getExpiryDate().matches("\\d{2}/\\d{2}")) {
             return new ValidationResult(false, "Invalid expiry date format (use MM/YY)");
         }
-        if (request.getQuantity() != null && request.getQuantity() <= 0) {
-            return new ValidationResult(false, "Quantity must be positive");
+        if (request.getIdempotencyKey() == null || request.getIdempotencyKey().trim().isEmpty()) {
+            return new ValidationResult(false, "Idempotency key is required");
         }
         return new ValidationResult(true, null);
     }
 
-    private void saveTransaction(PaymentRequest request, PaymentResponse response, String idempotencyKey) {
+    private void saveTransaction(
+            PaymentRequest request,
+            PaymentResponse response,
+            String idempotencyKey,
+            String clientId
+    ) {
+        Client client = clientRepository.findByClientId(clientId)
+                .orElseThrow(() -> new IllegalStateException("Client not found after validation"));
 
-        Client client = clientRepository.findByClientId(request.getClientId())
-                .orElseThrow(() -> new RuntimeException("Client not found")); // Should not happen after validation
+        Transaction transaction = buildTransaction(request, response, client, idempotencyKey);
+        transactionRepository.save(transaction);
+        logger.debug("Transaction saved with ID: {}", transaction.getId());
+    }
 
-        String cardLast4 = request.getCardNumber().substring(request.getCardNumber().length() - 4);
+    private void saveFailedTransaction(PaymentRequest request, String error, String idempotencyKey, String clientId) {
+        if (clientId == null) {
+            logger.warn("Cannot save failed transaction: clientId is null");
+            return;
+        }
+
+        Optional<Client> clientOpt = clientRepository.findByClientId(clientId);
+        if (clientOpt.isEmpty()) {
+            logger.warn("Cannot save failed transaction: client not found for clientId: {}", clientId);
+            return;
+        }
+
+        Transaction transaction = buildTransaction(request, null, clientOpt.get(), idempotencyKey);
+        transaction.setStatus(STATUS_FAILED);
+        transaction.setErrorMessage(error);
+        transactionRepository.save(transaction);
+        logger.debug("Failed transaction saved");
+    }
+
+    private Transaction buildTransaction(PaymentRequest request, PaymentResponse response, Client client, String idempotencyKey) {
+        String cardLast4 = extractCardLast4(request.getCardNumber());
+
         Transaction transaction = new Transaction();
         transaction.setClient(client);
         transaction.setAmount(request.getAmount());
         transaction.setCardLast4(cardLast4);
-        transaction.setStatus(response.isSuccess() ? "SUCCESS" : "FAILED");
-        transaction.setErrorMessage(response.isSuccess() ? null : response.getMessage());
+        transaction.setStatus(response != null && response.isSuccess() ? STATUS_SUCCESS : STATUS_FAILED);
+        transaction.setErrorMessage(response != null && !response.isSuccess() ? response.getMessage() : null);
         transaction.setCreatedAt(LocalDateTime.now());
         transaction.setIdempotencyKey(idempotencyKey);
+        transaction.setMetadata(buildMetadata(request));
+        if (response != null) {
+            transaction.setProviderTransactionId(response.getTransactionId());
+        }
 
-        Map<String, String> metadata = new HashMap<>();
-        if (request.getProductId() != null) {
-            metadata.put("productId", request.getProductId());
-        }
-        if (request.getDescription() != null) {
-            metadata.put("description", request.getDescription());
-        }
-        if (request.getQuantity() != null) {
-            metadata.put("quantity", request.getQuantity().toString());
-        }
-        transaction.setMetadata(metadata);
-
-        transactionRepository.save(transaction);
-        System.out.println("[PROXY] Transaction saved to database");
+        return transaction;
     }
 
-    private void saveFailedTransaction(PaymentRequest request, String error, String idempotencyKey) {
-
-        if (request.getClientId() != null) {
-            Optional<Client> clientOpt = clientRepository.findByClientId(request.getClientId());
-            if (clientOpt.isEmpty()) {
-                return;
-            }
-            String cardLast4 = request.getCardNumber() != null && request.getCardNumber().length() >= 4
-                    ? request.getCardNumber().substring(request.getCardNumber().length() - 4)
-                    : "0000";
-            Transaction transaction = new Transaction();
-            transaction.setClient(clientOpt.get());
-            transaction.setAmount(request.getAmount());
-            transaction.setCardLast4(cardLast4);
-            transaction.setStatus("FAILED");
-            transaction.setErrorMessage(error);
-            transaction.setCreatedAt(LocalDateTime.now());
-            transaction.setIdempotencyKey(idempotencyKey);
-
-            Map<String, String> metadata = new HashMap<>();
-            if (request.getProductId() != null) {
-                metadata.put("productId", request.getProductId());
-            }
-            if (request.getDescription() != null) {
-                metadata.put("description", request.getDescription());
-            }
-            if (request.getQuantity() != null) {
-                metadata.put("quantity", request.getQuantity().toString());
-            }
-            transaction.setMetadata(metadata);
-
-            transactionRepository.save(transaction);
+    private String extractCardLast4(String cardNumber) {
+        if (cardNumber == null || cardNumber.length() < 4) {
+            return "0000";
         }
+        return cardNumber.substring(cardNumber.length() - 4);
+    }
+
+    private Map<String, String> buildMetadata(PaymentRequest request) {
+        if (request.getMetadata() == null) {
+            return new HashMap<>();
+        }
+        return new HashMap<>(request.getMetadata());
+    }
+
+    private PaymentResponse buildResponseFromTransaction(Transaction tx) {
+        boolean isSuccess = STATUS_SUCCESS.equals(tx.getStatus());
+        return new PaymentResponse(
+                isSuccess,
+                tx.getProviderTransactionId() != null ? tx.getProviderTransactionId() : tx.getId().toString(),
+                isSuccess ? "Payment already processed (cached)" : tx.getErrorMessage(),
+                tx.getErrorMessage() != null ? ERROR_CACHED : null,
+                LocalDateTime.now()
+        );
     }
 
     private void sendWebhook(PaymentResponse response, PaymentRequest request) {
-        if (response.isSuccess()) {
-            WebhookEvent event = new WebhookEvent();
-            event.setEventId("evt_" + System.currentTimeMillis());
-            event.setEventType("payment.success");
-            event.setTransactionId(response.getTransactionId());
-            event.setAmount(request.getAmount());
-            event.setProductId(request.getProductId());
-            event.setDescription(request.getDescription());
-            event.setTimestamp(LocalDateTime.now());
-            webhookService.sendWebhook(event);
-        } else {
-            WebhookEvent event = new WebhookEvent();
-            event.setEventId("evt_" + System.currentTimeMillis());
-            event.setEventType("payment.failed");
-            event.setTransactionId(null);
-            event.setAmount(request.getAmount());
-            event.setProductId(request.getProductId());
-            event.setDescription(request.getDescription());
-            event.setTimestamp(LocalDateTime.now());
-            webhookService.sendWebhook(event);
+        WebhookEvent event = buildWebhookEvent(response, request);
+        webhookService.sendWebhook(event);
+    }
+
+    private WebhookEvent buildWebhookEvent(PaymentResponse response, PaymentRequest request) {
+        WebhookEvent event = new WebhookEvent();
+        event.setEventId("evt_" + System.currentTimeMillis());
+        event.setEventType(response.isSuccess() ? "payment.success" : "payment.failed");
+        event.setTransactionId(response.getTransactionId());
+        event.setAmount(request.getAmount());
+        String productId = null;
+        String description = null;
+        if (request.getMetadata() != null) {
+            productId = request.getMetadata().get("productId");
+            description = request.getMetadata().get("description");
         }
+        event.setProductId(productId);
+        event.setDescription(description);
+        event.setTimestamp(LocalDateTime.now());
+        return event;
     }
 
     private void logRequest(PaymentRequest request) {
         String maskedCard = maskCardNumber(request.getCardNumber());
-        System.out.println("[PROXY] Request logged - Amount: $" + request.getAmount() + ", Card: " + maskedCard);
+        logger.debug("Payment request - Amount: {}, Card: {}", request.getAmount(), maskedCard);
     }
 
     private void logResponse(PaymentResponse response) {
-        System.out.println("[PROXY] Response logged - Success: " + response.isSuccess());
+        logger.debug("Payment response - Success: {}, TransactionId: {}", response.isSuccess(), response.getTransactionId());
     }
 
     private String maskCardNumber(String cardNumber) {
-        if (cardNumber.length() < 4) return "****";
+        if (cardNumber == null || cardNumber.length() < 4) {
+            return "****";
+        }
         return "****-****-****-" + cardNumber.substring(cardNumber.length() - 4);
+    }
+
+    private PaymentService selectPaymentService(PaymentRequest request) {
+        if (request.getProvider() != null) {
+            String key = request.getProvider().trim().toLowerCase();
+            if ("visa".equals(key)) {
+                return visaPaymentService;
+            }
+            if ("stripe".equals(key)) {
+                return stripePaymentService;
+            }
+        }
+        String cardNumber = request.getCardNumber();
+        if (cardNumber != null && cardNumber.startsWith(VISA_CARD_PREFIX)) {
+            return visaPaymentService;
+        }
+        return stripePaymentService;
+    }
+
+    private String getProviderName(PaymentService service) {
+        if (service instanceof PaymentProvider provider) {
+            return provider.getProviderKey();
+        }
+        return service.getClass().getSimpleName();
     }
 }

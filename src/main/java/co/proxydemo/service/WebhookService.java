@@ -1,6 +1,8 @@
 package co.proxydemo.service;
 
 import co.proxydemo.dto.WebhookEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -9,15 +11,17 @@ import java.util.List;
 @Service
 public class WebhookService {
 
+    private static final Logger logger = LoggerFactory.getLogger(WebhookService.class);
+
     private final List<WebhookEvent> eventQueue = new ArrayList<>();
 
     public void sendWebhook(WebhookEvent event) {
-        System.out.println("[WEBHOOK] Sending webhook: " + event.getEventType());
-        System.out.println("Event ID: " + event.getEventId());
-        System.out.println("Transaction: " + event.getTransactionId());
-        if (event.getProductId() != null) {
-            System.out.println("Product: " + event.getProductId() + " - " + event.getDescription());
-        }
+        logger.info("Sending webhook: {} (Event ID: {})", event.getEventType(), event.getEventId());
+        logger.debug(
+                "Webhook details - Transaction: {}, Product: {}",
+                event.getTransactionId(),
+                event.getProductId() != null ? event.getProductId() + " - " + event.getDescription() : "N/A"
+        );
         eventQueue.add(event);
     }
 

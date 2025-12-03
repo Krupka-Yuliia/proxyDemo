@@ -8,35 +8,35 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
-public class StripePaymentService extends AbstractCardPaymentService {
+public class VisaPaymentService extends AbstractCardPaymentService {
 
     @Override
     public String getProviderKey() {
-        return "stripe";
+        return "visa";
     }
 
     @Override
     protected int getProcessingDelayMs() {
-        return 800;
+        return 600;
     }
 
     @Override
     protected PaymentResponse simulateProviderResponse(PaymentRequest request) {
         String cardNumber = request.getCardNumber();
 
-        if ("4000000000000002".equals(cardNumber)) {
+        if ("4111111111111111".equals(cardNumber)) {
             return new PaymentResponse(false, null, "Your card was declined", ERROR_CARD_DECLINED, LocalDateTime.now());
         }
-        if ("4000000000000069".equals(cardNumber)) {
+        if ("4111111111111112".equals(cardNumber)) {
             return new PaymentResponse(false, null, "Your card has expired", ERROR_EXPIRED_CARD, LocalDateTime.now());
         }
-        if ("4000000000000127".equals(cardNumber)) {
+        if ("4111111111111113".equals(cardNumber)) {
             return new PaymentResponse(false, null, "Your card's security code is incorrect", ERROR_INCORRECT_CVC, LocalDateTime.now());
         }
-        if ("4000000000000119".equals(cardNumber)) {
+        if ("4111111111111114".equals(cardNumber)) {
             return new PaymentResponse(false, null, "An error occurred while processing your card", ERROR_PROCESSING_ERROR, LocalDateTime.now());
         }
-        if ("4000000000000341".equals(cardNumber)) {
+        if ("4111111111111115".equals(cardNumber)) {
             return new PaymentResponse(false, null, "Your card has insufficient funds", ERROR_INSUFFICIENT_FUNDS, LocalDateTime.now());
         }
 
@@ -44,7 +44,8 @@ public class StripePaymentService extends AbstractCardPaymentService {
             return new PaymentResponse(false, null, "Your card has expired", ERROR_EXPIRED_CARD, LocalDateTime.now());
         }
 
-        String transactionId = "txn_" + UUID.randomUUID().toString().substring(0, 8);
+        String transactionId = "visa_" + UUID.randomUUID().toString().substring(0, 8);
         return new PaymentResponse(true, transactionId, "Payment processed successfully", null, LocalDateTime.now());
     }
 }
+
