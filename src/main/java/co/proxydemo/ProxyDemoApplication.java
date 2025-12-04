@@ -24,15 +24,13 @@ public class ProxyDemoApplication implements CommandLineRunner {
     public void run(String... args) {
         Client testClient = initializeTestClient();
 
-        System.out.println("\n╔═══════════════════════════════════════════════╗");
-        System.out.println("║  PAYMENT PROXY PATTERN DEMONSTRATION          ║");
-        System.out.println("╚═══════════════════════════════════════════════╝\n");
 
         System.out.println("TEST 1: Successful Payment with Product");
         System.out.println("═════════════════════════════════════════════");
         PaymentRequest req1 = new PaymentRequest();
         req1.setAmount(150.00);
         req1.setCardNumber("4242424242424242");
+        req1.setIdempotencyKey("test-key-1");
         req1.setCvv("123");
         req1.setExpiryDate("12/28");
         req1.setMetadata(java.util.Map.of(
@@ -47,6 +45,7 @@ public class ProxyDemoApplication implements CommandLineRunner {
         PaymentRequest req2 = new PaymentRequest();
         req2.setAmount(75.50);
         req2.setCardNumber("4000000000000002");
+        req2.setIdempotencyKey("test-key-2");
         req2.setCvv("456");
         req2.setExpiryDate("03/27");
         req2.setMetadata(java.util.Map.of(
@@ -60,6 +59,7 @@ public class ProxyDemoApplication implements CommandLineRunner {
         System.out.println("════════════════════════════════════════");
         PaymentRequest req3 = new PaymentRequest();
         req3.setAmount(150.00);
+        req3.setIdempotencyKey("test-key-1");
         req3.setCardNumber("4242424242424242");
         req3.setCvv("123");
         req3.setExpiryDate("12/28");
@@ -75,6 +75,7 @@ public class ProxyDemoApplication implements CommandLineRunner {
         PaymentRequest req4 = new PaymentRequest();
         req4.setAmount(299.99);
         req4.setCardNumber("4242424242424242");
+        req4.setIdempotencyKey("test-key-4");
         req4.setCvv("789");
         req4.setExpiryDate("06/29");
         req4.setMetadata(java.util.Map.of(
@@ -90,6 +91,7 @@ public class ProxyDemoApplication implements CommandLineRunner {
         req5.setAmount(50.00);
         req5.setCardNumber("4242424242424242");
         req5.setCvv("321");
+        req5.setIdempotencyKey("test-key-5");
         req5.setExpiryDate("09/27");
         req5.setMetadata(java.util.Map.of(
                 "productId", "999",

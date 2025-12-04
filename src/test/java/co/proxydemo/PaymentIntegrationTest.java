@@ -96,7 +96,6 @@ public class PaymentIntegrationTest {
         headers.set("X-Client-Secret", "secret-abc");
 
         HttpEntity<PaymentRequest> entity = new HttpEntity<>(req, headers);
-
         ResponseEntity<PaymentResponse> response = restTemplate.postForEntity(baseUrl(), entity, PaymentResponse.class);
 
         assertThat(response).isNotNull();
