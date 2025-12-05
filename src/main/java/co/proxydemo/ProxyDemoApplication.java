@@ -26,73 +26,68 @@ public class ProxyDemoApplication implements CommandLineRunner {
 
 
         System.out.println("TEST 1: Successful Payment with Product");
-        System.out.println("═════════════════════════════════════════════");
         PaymentRequest req1 = new PaymentRequest();
-        req1.setAmount(150.00);
+        req1.setAmount(100.00);
         req1.setCardNumber("4242424242424242");
-        req1.setIdempotencyKey("test-key-1");
-        req1.setCvv("123");
+        req1.setIdempotencyKey("567897651");
+        req1.setCvv("111");
         req1.setExpiryDate("12/28");
         req1.setMetadata(java.util.Map.of(
                 "productId", "1",
-                "description", "Wireless Headphones",
+                "description", "Ferrari car figure",
                 "quantity", "1"
         ));
         paymentService.processPayment(req1, testClient.getClientId(), testClient.getClientSecret());
 
         System.out.println("\nTEST 2: Card Declined");
-        System.out.println("═══════════════════════");
         PaymentRequest req2 = new PaymentRequest();
-        req2.setAmount(75.50);
+        req2.setAmount(750.50);
         req2.setCardNumber("4000000000000002");
-        req2.setIdempotencyKey("test-key-2");
-        req2.setCvv("456");
-        req2.setExpiryDate("03/27");
+        req2.setIdempotencyKey("561117651");
+        req2.setCvv("222");
+        req2.setExpiryDate("11/29");
         req2.setMetadata(java.util.Map.of(
                 "productId", "2",
-                "description", "Smart Watch",
+                "description", "Phone",
                 "quantity", "1"
         ));
         paymentService.processPayment(req2, testClient.getClientId(), testClient.getClientSecret());
 
         System.out.println("\nTEST 3: Idempotent Request (duplicate)");
-        System.out.println("════════════════════════════════════════");
         PaymentRequest req3 = new PaymentRequest();
-        req3.setAmount(150.00);
-        req3.setIdempotencyKey("test-key-1");
+        req3.setAmount(100.00);
+        req3.setIdempotencyKey("567897651");
         req3.setCardNumber("4242424242424242");
-        req3.setCvv("123");
-        req3.setExpiryDate("12/28");
+        req3.setCvv("111");
+        req3.setExpiryDate("12/27");
         req3.setMetadata(java.util.Map.of(
                 "productId", "1",
-                "description", "Wireless Headphones",
+                "description", "Ferrari car figure",
                 "quantity", "1"
         ));
         paymentService.processPayment(req3, testClient.getClientId(), testClient.getClientSecret());
 
         System.out.println("\nTEST 4: Insufficient Stock");
-        System.out.println("═══════════════════════════");
         PaymentRequest req4 = new PaymentRequest();
-        req4.setAmount(299.99);
+        req4.setAmount(19.99);
         req4.setCardNumber("4242424242424242");
-        req4.setIdempotencyKey("test-key-4");
-        req4.setCvv("789");
-        req4.setExpiryDate("06/29");
+        req4.setIdempotencyKey("5678933341");
+        req4.setCvv("999");
+        req4.setExpiryDate("12/26");
         req4.setMetadata(java.util.Map.of(
                 "productId", "3",
-                "description", "Gaming Laptop",
+                "description", "Christmas candle",
                 "quantity", "10"
         ));
         paymentService.processPayment(req4, testClient.getClientId(), testClient.getClientSecret());
 
         System.out.println("\nTEST 5: Product Not Found");
-        System.out.println("═══════════════════════════");
         PaymentRequest req5 = new PaymentRequest();
-        req5.setAmount(50.00);
+        req5.setAmount(340.00);
         req5.setCardNumber("4242424242424242");
-        req5.setCvv("321");
-        req5.setIdempotencyKey("test-key-5");
-        req5.setExpiryDate("09/27");
+        req5.setCvv("567");
+        req5.setIdempotencyKey("787643321");
+        req5.setExpiryDate("11/26");
         req5.setMetadata(java.util.Map.of(
                 "productId", "999",
                 "description", "Non-existent Product",
@@ -112,14 +107,14 @@ public class ProxyDemoApplication implements CommandLineRunner {
             return existingClient;
         }
 
-        Client testClient = new Client();
-        testClient.setClientId("test-client-id");
-        testClient.setClientSecret("test-client-secret");
-        testClient.setName("Test Client");
-        testClient.setDescription("Test client for payment proxy demonstration");
-        testClient.setActive(true);
+        Client testClient2 = new Client();
+        testClient2.setClientId("test-client-id2");
+        testClient2.setClientSecret("test-client-secret2");
+        testClient2.setName("Test Client2");
+        testClient2.setDescription("Test client for payment proxy demonstration");
+        testClient2.setActive(true);
 
-        Client savedClient = clientRepository.save(testClient);
+        Client savedClient = clientRepository.save(testClient2);
         System.out.println("Test client created: " + savedClient.getName() + " (ID: " + savedClient.getClientId() + ")\n");
 
         return savedClient;
