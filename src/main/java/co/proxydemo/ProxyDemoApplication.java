@@ -26,6 +26,7 @@ public class ProxyDemoApplication implements CommandLineRunner {
 
 
         System.out.println("TEST 1: Successful Payment with Product");
+
         PaymentRequest req1 = new PaymentRequest();
         req1.setAmount(100.00);
         req1.setCardNumber("4242424242424242");
@@ -40,6 +41,7 @@ public class ProxyDemoApplication implements CommandLineRunner {
         paymentService.processPayment(req1, testClient.getClientId(), testClient.getClientSecret());
 
         System.out.println("\nTEST 2: Card Declined");
+
         PaymentRequest req2 = new PaymentRequest();
         req2.setAmount(750.50);
         req2.setCardNumber("4000000000000002");
@@ -54,6 +56,7 @@ public class ProxyDemoApplication implements CommandLineRunner {
         paymentService.processPayment(req2, testClient.getClientId(), testClient.getClientSecret());
 
         System.out.println("\nTEST 3: Idempotent Request (duplicate)");
+
         PaymentRequest req3 = new PaymentRequest();
         req3.setAmount(100.00);
         req3.setIdempotencyKey("567897651");
@@ -66,34 +69,6 @@ public class ProxyDemoApplication implements CommandLineRunner {
                 "quantity", "1"
         ));
         paymentService.processPayment(req3, testClient.getClientId(), testClient.getClientSecret());
-
-        System.out.println("\nTEST 4: Insufficient Stock");
-        PaymentRequest req4 = new PaymentRequest();
-        req4.setAmount(19.99);
-        req4.setCardNumber("4242424242424242");
-        req4.setIdempotencyKey("5678933341");
-        req4.setCvv("999");
-        req4.setExpiryDate("12/26");
-        req4.setMetadata(java.util.Map.of(
-                "productId", "3",
-                "description", "Christmas candle",
-                "quantity", "10"
-        ));
-        paymentService.processPayment(req4, testClient.getClientId(), testClient.getClientSecret());
-
-        System.out.println("\nTEST 5: Product Not Found");
-        PaymentRequest req5 = new PaymentRequest();
-        req5.setAmount(340.00);
-        req5.setCardNumber("4242424242424242");
-        req5.setCvv("567");
-        req5.setIdempotencyKey("787643321");
-        req5.setExpiryDate("11/26");
-        req5.setMetadata(java.util.Map.of(
-                "productId", "999",
-                "description", "Non-existent Product",
-                "quantity", "1"
-        ));
-        paymentService.processPayment(req5, testClient.getClientId(), testClient.getClientSecret());
     }
 
     private Client initializeTestClient() {
